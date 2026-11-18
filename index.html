@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#101827">
+<meta name="description" content="Delivery Master : conduis ton camion, livre les colis et débloque de nouveaux véhicules.">
+<link rel="manifest" href="manifest.json">
+<title>Delivery Master</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#fff;font-family:system-ui,Arial;display:flex;min-height:100vh;align-items:center;justify-content:center}
+main{width:min(100%,1000px);padding:14px}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}h1{font-size:clamp(23px,5vw,34px);margin:4px 0}button{border:0;border-radius:12px;padding:12px 16px;background:#f5b82e;color:#18202d;font-weight:800;font-size:15px}
+.hud{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}.pill{background:#202d40;padding:8px 12px;border-radius:10px;font-weight:700}
+canvas{width:100%;aspect-ratio:16/9;background:#8ed3f3;border-radius:16px;display:block;border:3px solid #34445b;touch-action:manipulation}
+.controls{display:flex;justify-content:center;gap:16px;margin:12px}.controls button{min-width:100px;background:#34445b;color:#fff}
+.panel{background:#202d40;border-radius:14px;padding:12px;margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+small{color:#bdc9d9}button:active{transform:scale(.97)}
+</style>
+</head>
+<body><main>
+<div class="top"><div><h1>🚚 Delivery Master</h1><small>Conduis, collecte les colis et livre à destination !</small></div><button id="restart">Recommencer</button></div>
+<div class="hud"><span class="pill">Niveau : <b id="level">1</b>/30</span><span class="pill">Pièces : <b id="coins">0</b> 🪙</span><span class="pill">Colis : <b id="cargo">0</b>/3 📦</span><span class="pill">Camion : <b id="truck">Petit camion</b></span></div>
+<canvas id="game" width="960" height="540" aria-label="Jeu de livraison"></canvas>
+<div class="controls"><button id="left">◀ Gauche</button><button id="jump">Sauter ⬆</button><button id="right">Droite ▶</button></div>
+<div class="panel"><div><b>Garage</b><br><small>Débloque des véhicules avec tes pièces.</small></div><button id="van">🚐 Fourgon — 100 🪙</button><button id="truckBuy">🚛 Camion lourd — 200 🪙</button></div>
+<div class="panel"><div><b>Mission</b><br><small>Ramasse 3 colis puis atteins le dépôt vert. Évite les obstacles !</small></div><button id="next">Nouveau niveau</button></div>
+</main>
+<script>
+const c=document.getElementById('game'),ctx=c.getContext('2d');
+let level=1,coins=+(localStorage.dmCoins||0),cargo=0,x=100,y=390,vx=0,vy=0,onGround=true,playing=true,owned=JSON.parse(localStorage.dmOwned||'["Petit camion"]'),truck=localStorage.dmTruck||"Petit camion",items=[],obstacles=[],keys={},frame=0;
+const $=id=>document.getElementById(id);
+function save(){localStorage.dmCoins=coins;localStorage.dmOwned=JSON.stringify(owned);localStorage.dmTruck=truck;update()}
+function update(){$('level').textContent=level;$('coins').textContent=coins;$('cargo').textContent=cargo;$('truck').textContent=truck}
+function setup(){x=90;y=390;vx=0;vy=0;cargo=0;playing=true;items=[{x:280,y:380},{x:480,y:330},{x:690,y:380}];obstacles=[{x:370,w:42,h:55},{x:590,w:50,h:75}];update()}
+function draw(){
+ ctx.clearRect(0,0,960,540);
+ let sky=ctx.createLinearGradient(0,0,0,540);sky.addColorStop(0,'#76c9f0');sky.addColorStop(1,'#d8f4ff');ctx.fillStyle=sky;ctx.fillRect(0,0,960,540);
+ ctx.fillStyle='#7abf62';ctx.fillRect(0,450,960,90);
+ ctx.fillStyle='#59677a';ctx.fillRect(0,470,960,70);
+ for(let i=0;i<12;i++){ctx.fillStyle='#f6d36b';ctx.fillRect(i*90+10,495,42,5)}
+ // depot
+ ctx.fillStyle='#168b55';ctx.fillRect(850,360,80,90);ctx.fillStyle='white';ctx.font='bold 18px Arial';ctx.fillText('DÉPÔT',855,350);
+ items.forEach((p,i)=>{if(p){ctx.fillStyle='#c77b35';ctx.fillRect(p.x,p.y,28,28);ctx.strokeStyle='#fff1c7';ctx.strokeRect(p.x,p.y,28,28);ctx.beginPath();ctx.moveTo(p.x+14,p.y);ctx.lineTo(p.x+14,p.y+28);ctx.stroke()}});
+ obstacles.forEach(o=>{ctx.fillStyle='#d94d4d';ctx.fillRect(o.x,450-o.h,o.w,o.h);ctx.fillStyle='#fff';ctx.fillRect(o.x+7,450-o.h+9,8,8)});
+ // truck body
+ ctx.fillStyle=truck==='Camion lourd'?'#d8a42b':truck==='Fourgon'?'#3e77d0':'#e95e3d';
+ ctx.fillRect(x,y,88,42);ctx.fillStyle='#26374c';ctx.fillRect(x+58,y-20,34,62);ctx.fillStyle='#bce8f5';ctx.fillRect(x+64,y-14,22,15);
+ ctx.fillStyle='#202b3a';ctx.beginPath();ctx.arc(x+20,y+43,12,0,Math.PI*2);ctx.arc(x+72,y+43,12,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#f8f2dc';ctx.fillRect(x+10,y+8,40,8);
+ ctx.fillStyle='#233';ctx.font='bold 17px Arial';ctx.fillText('DM',x+17,y+25);
+ if(!playing){ctx.fillStyle='rgba(10,20,35,.72)';ctx.fillRect(0,0,960,540);ctx.fillStyle='white';ctx.textAlign='center';ctx.font='bold 42px Arial';ctx.fillText('Livraison réussie !',480,235);ctx.font='24px Arial';ctx.fillText('+ 50 pièces',480,280);ctx.textAlign='left'}
+}
+function step(){if(playing){frame++;if(keys.ArrowRight||keys.right)x+=4.2;if(keys.ArrowLeft||keys.left)x-=4.2;x=Math.max(0,Math.min(870,x));vy+=.65;y+=vy;if(y>390){y=390;vy=0;onGround=true}
+ items.forEach((p,i)=>{if(p&&Math.abs((x+44)-p.x)<35&&Math.abs((y+20)-p.y)<45){items[i]=null;cargo++;coins+=5;save()}});
+ obstacles.forEach(o=>{if(x+78>o.x&&x<o.x+o.w&&y+42>450-o.h){x=Math.max(0,x-8);coins=Math.max(0,coins-1);save()}});
+ if(x>835&&cargo>=3){playing=false;coins+=50;save();level=Math.min(30,level+1);update()}
+ }draw();requestAnimationFrame(step)}
+function jump(){if(onGround){vy=-13;onGround=false}}
+$('left').onpointerdown=()=>keys.left=true;$('left').onpointerup=()=>keys.left=false;$('left').onpointerleave=()=>keys.left=false;
+$('right').onpointerdown=()=>keys.right=true;$('right').onpointerup=()=>keys.right=false;$('right').onpointerleave=()=>keys.right=false;
+$('jump').onclick=jump;window.onkeydown=e=>{if(e.key==='ArrowUp'||e.key===' '){e.preventDefault();jump()}keys[e.key]=true};window.onkeyup=e=>keys[e.key]=false;
+$('restart').onclick=setup;$('next').onclick=()=>{if(!playing){setup()}else alert('Ramasse les 3 colis puis atteins le dépôt vert !')};
+$('van').onclick=()=>buy('Fourgon',100);$('truckBuy').onclick=()=>buy('Camion lourd',200);
+function buy(name,cost){if(owned.includes(name)){truck=name;save();return}if(coins>=cost){coins-=cost;owned.push(name);truck=name;save()}else alert('Pas assez de pièces !')}
+update();setup();step();
+if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+</script></body></html>
